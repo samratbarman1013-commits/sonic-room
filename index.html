@@ -135,6 +135,15 @@
     background-size:5px 5px,5px 5px;background-repeat:no-repeat;
   }
   .sel option{background:#0d1520;color:#e8eef6}
+  .btn--rec{background:rgba(216,96,63,.22);border-color:rgba(216,96,63,.62);color:#ffd9cc}
+  .toast{
+    position:fixed;left:50%;bottom:calc(var(--panel-h) + 92px);transform:translateX(-50%) translateY(8px);
+    background:rgba(15,24,36,.96);border:1px solid var(--border-2);border-radius:999px;
+    padding:9px 16px;font-family:var(--font-mono);font-size:11.5px;color:var(--text);
+    opacity:0;pointer-events:none;transition:opacity .22s,transform .22s;z-index:9;
+    white-space:nowrap;max-width:calc(100vw - 32px);overflow:hidden;text-overflow:ellipsis;
+  }
+  .toast.is-on{opacity:1;transform:translateX(-50%) translateY(0)}
   .chk{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--dim);margin-bottom:10px;cursor:pointer;user-select:none;min-height:28px}
   .chk input{appearance:none;-webkit-appearance:none;width:17px;height:17px;border-radius:4px;border:1px solid var(--border-2);background:rgba(255,255,255,.04);flex:none;cursor:pointer;position:relative;transition:background .15s,border-color .15s}
   .chk input:checked{background:var(--teal);border-color:var(--teal)}
@@ -224,7 +233,6 @@
 <header class="brand">
   <div class="brand__kicker">Binaural playground</div>
   <h1>Sonic Room</h1>
-  <p>You are the dot in the middle. The <b>coloured orbs</b> are speakers — drag them anywhere around you and listen to where they land.</p>
 </header>
 
 <aside class="panel" id="panel">
@@ -235,7 +243,7 @@
       <h2 class="grp__h"><span class="dot dot--amber"></span>Source</h2>
       <input type="file" id="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.opus" multiple hidden>
       <button class="btn btn--primary" id="pick" style="width:100%">Choose songs from device</button>
-      <div class="track" id="trackName" style="margin-top:9px">No track loaded — pick one file or your whole playlist</div>
+      <div class="track" id="trackName" style="margin-top:9px">No track loaded</div>
       <div class="row">
         <button class="btn" id="prev" aria-label="Previous track">Prev</button>
         <button class="btn" id="play">Play</button>
@@ -243,6 +251,7 @@
       </div>
       <div class="row">
         <button class="btn" id="demo" style="flex:1">Demo sound</button>
+        <button class="btn" id="rec" style="flex:1">Record</button>
       </div>
       <label class="ctl">
         <span>Volume</span><output id="volOut">85%</output>
@@ -265,7 +274,6 @@
         <button class="btn" id="addSpk">Add speaker</button>
         <button class="btn" id="delSpk">Remove</button>
       </div>
-      <p class="hint" style="margin-bottom:12px">Tap the floor to place the selected speaker, or drag its orb.</p>
     </section>
 
     <section class="grp">
@@ -340,20 +348,10 @@
       </div>
     </section>
 
-    <section class="grp">
-      <h2 class="grp__h"><span class="dot dot--teal"></span>Install</h2>
-      <div class="row" id="installRow" style="display:none">
+    <section class="grp" id="installGrp" style="display:none">
+      <div class="row" id="installRow" style="display:flex">
         <button class="btn btn--primary" id="installBtn" style="width:100%">Install on this device</button>
       </div>
-      <p class="hint" id="installHint">Add it to your home screen and it opens full-screen, works offline, and keeps your settings.</p>
-    </section>
-
-    <section class="grp">
-      <h2 class="grp__h"><span class="dot dot--slate"></span>Controls</h2>
-      <p class="hint">
-        Drag an orb to move it · drag empty space to turn your head · tap the floor to place · scroll / pinch to zoom.<br>
-        <kbd>A</kbd><kbd>D</kbd> swing · <kbd>W</kbd><kbd>S</kbd> distance · <kbd>Q</kbd><kbd>E</kbd> height · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> pick speaker · <kbd>Space</kbd> play/pause · <kbd>Shift</kbd>+drag to lift.
-      </p>
     </section>
 
   </div>
@@ -368,15 +366,7 @@
   <div class="meter"><div class="meter__k">Signal</div><div class="bar"><div class="bar__fill" id="barFill"></div></div></div>
 </div>
 
-<div class="start" id="start">
-  <h2>Step into the room</h2>
-  <p>Load a song, then move the coloured speakers around yourself. Turn your head by dragging the background — the sound stays put in space.</p>
-  <div class="row">
-    <button class="btn btn--primary" id="pick2">Choose songs</button>
-    <button class="btn" id="demo2">Demo sound</button>
-  </div>
-  <div class="start__note">Headphones strongly recommended.</div>
-</div>
+<div class="toast" id="toast"></div>
 
 <script>
 (() => {
@@ -547,6 +537,8 @@ function rayToPlane(sx, sy, h) {
 const el = new Audio();
 el.loop = true;
 el.preload = 'auto';
+el.setAttribute('playsinline', '');
+try { if ('audioSession' in navigator) navigator.audioSession.type = 'playback'; } catch (e) {}
 
 let actx = null, input = null, master = null, conv = null, wet = null,
     analyser = null, mediaSrc = null, demoNode = null, timeData = null, irTimer = null;
@@ -793,6 +785,7 @@ function trackLabel() {
   const pos = playlist.length > 1 ? `  ·  ${plIndex + 1}/${playlist.length}` : '';
   $('trackName').textContent = t.name + pos;
   $('trackName').classList.add('track--live');
+  updateMediaSession();
 }
 
 function playIndex(i, autoplay = true) {
@@ -830,11 +823,158 @@ el.addEventListener('ended', () => {
   el.currentTime = 0; el.play().catch(() => {});
 });
 
-el.addEventListener('play', () => { state.playing = true; $('play').textContent = 'Pause'; });
-el.addEventListener('pause', () => { state.playing = false; $('play').textContent = 'Play'; });
+el.addEventListener('play', () => { state.playing = true; $('play').textContent = 'Pause'; updateMediaSession(); });
+el.addEventListener('pause', () => { state.playing = false; $('play').textContent = 'Play'; updateMediaSession(); });
 
-function hideStart() { $('start').classList.add('hide'); }
-$('start').addEventListener('pointerdown', e => { if (!e.target.closest('button')) hideStart(); });
+function hideStart() {}   // no onboarding card any more
+
+/* ============================================================
+   Recording — captures exactly what you hear (binaural mix)
+   ============================================================ */
+let rec = null;
+let toastTimer = null;
+
+function showToast(msg, ms) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('is-on');
+  clearTimeout(toastTimer);
+  if (ms) toastTimer = setTimeout(() => t.classList.remove('is-on'), ms);
+}
+function hideToast() { $('toast').classList.remove('is-on'); clearTimeout(toastTimer); }
+
+const fmtTime = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+const stamp = () => {
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
+};
+
+function startRec() {
+  ensureAudio();
+  if (!actx || rec) return;
+  if (typeof actx.createScriptProcessor !== 'function') {
+    showToast('Recording is not supported in this browser', 3000);
+    return;
+  }
+  const proc = actx.createScriptProcessor(4096, 2, 2);
+  const silent = actx.createGain();
+  silent.gain.value = 0;
+  const left = [], right = [];
+  const MAX = actx.sampleRate * 60 * 20;   // 20 minute cap
+  let frames = 0;
+
+  proc.onaudioprocess = ev => {
+    if (frames >= MAX) return;
+    const ib = ev.inputBuffer;
+    const l = ib.getChannelData(0);
+    const r = ib.numberOfChannels > 1 ? ib.getChannelData(1) : l;
+    const n = Math.min(l.length, MAX - frames);
+    const cl = new Int16Array(n), cr = new Int16Array(n);
+    for (let i = 0; i < n; i++) {
+      cl[i] = Math.max(-1, Math.min(1, l[i])) * 32767;
+      cr[i] = Math.max(-1, Math.min(1, r[i])) * 32767;
+    }
+    left.push(cl); right.push(cr);
+    frames += n;
+  };
+
+  master.connect(proc);
+  proc.connect(silent);
+  silent.connect(actx.destination);
+
+  rec = { proc, silent, left, right, frames: () => frames, sr: actx.sampleRate, t0: performance.now() };
+  rec.timer = setInterval(() => {
+    if (!rec) return;
+    const el2 = (performance.now() - rec.t0) / 1000;
+    $('rec').textContent = 'Stop ' + fmtTime(el2);
+    if (frames >= MAX) stopRec();
+  }, 250);
+
+  $('rec').classList.add('btn--rec');
+  $('rec').textContent = 'Stop 0:00';
+  showToast('Recording what you hear', 2200);
+}
+
+function encodeWav(left, right, frames, sr) {
+  const bytes = frames * 4;
+  const buf = new ArrayBuffer(44 + bytes);
+  const v = new DataView(buf);
+  const w = (o, str) => { for (let i = 0; i < str.length; i++) v.setUint8(o + i, str.charCodeAt(i)); };
+  w(0, 'RIFF'); v.setUint32(4, 36 + bytes, true); w(8, 'WAVE');
+  w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 2, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 4, true); v.setUint16(32, 4, true); v.setUint16(34, 16, true);
+  w(36, 'data'); v.setUint32(40, bytes, true);
+  let o = 44;
+  for (let c = 0; c < left.length; c++) {
+    const L = left[c], R = right[c];
+    for (let i = 0; i < L.length; i++) {
+      v.setInt16(o, L[i], true); o += 2;
+      v.setInt16(o, R[i], true); o += 2;
+    }
+  }
+  return buf;
+}
+
+function stopRec() {
+  if (!rec) return;
+  clearInterval(rec.timer);
+  const r = rec; rec = null;
+  try { master.disconnect(r.proc); } catch (e) {}
+  try { r.proc.disconnect(); } catch (e) {}
+  try { r.silent.disconnect(); } catch (e) {}
+
+  $('rec').classList.remove('btn--rec');
+  $('rec').textContent = 'Record';
+
+  const frames = r.frames();
+  if (!frames) { showToast('Nothing was recorded', 2500); return; }
+
+  const wav = encodeWav(r.left, r.right, frames, r.sr);
+  const blob = new Blob([wav], { type: 'audio/wav' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'sonic-room-' + stamp() + '.wav';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 90000);
+
+  showToast('Saved ' + fmtTime(frames / r.sr) + '  ·  ' + (blob.size / 1048576).toFixed(1) + ' MB', 5000);
+}
+
+function toggleRec() { rec ? stopRec() : startRec(); }
+
+/* ============================================================
+   Lock-screen / background playback
+   ============================================================ */
+function setupMediaSession() {
+  if (!('mediaSession' in navigator)) return;
+  const safe = (action, fn) => { try { navigator.mediaSession.setActionHandler(action, fn); } catch (e) {} };
+  safe('play', () => { ensureAudio(); el.play().catch(() => {}); });
+  safe('pause', () => el.pause());
+  safe('previoustrack', () => stepTrack(-1));
+  safe('nexttrack', () => stepTrack(1));
+  safe('seekbackward', () => { el.currentTime = Math.max(0, el.currentTime - 10); });
+  safe('seekforward', () => { el.currentTime = Math.min(el.duration || 0, el.currentTime + 10); });
+}
+
+function updateMediaSession() {
+  if (!('mediaSession' in navigator) || !playlist.length) return;
+  const t = playlist[plIndex];
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: t.name,
+      artist: 'Sonic Room',
+      album: 'Binaural mix',
+      artwork: [
+        { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+        { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' }
+      ]
+    });
+    navigator.mediaSession.playbackState = state.playing ? 'playing' : 'paused';
+  } catch (e) {}
+}
 
 /* keep the screen alive while listening */
 let wakeLock = null;
@@ -847,8 +987,14 @@ async function requestWakeLock() {
   } catch (e) { /* not supported — harmless */ }
 }
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && (state.playing || demoNode)) requestWakeLock();
+  if (document.visibilityState !== 'visible') return;
+  if (state.playing || demoNode) requestWakeLock();
+  if (actx && actx.state !== 'running' && (state.playing || demoNode)) {
+    actx.resume().catch(() => {});
+  }
 });
+
+if ('mediaSession' in navigator) setupMediaSession();
 
 /* ============================================================
    UI
@@ -939,13 +1085,12 @@ $('addSpk').addEventListener('click', addSpeaker);
 $('delSpk').addEventListener('click', removeSpeaker);
 
 $('pick').addEventListener('click', () => $('file').click());
-$('pick2').addEventListener('click', () => $('file').click());
 $('file').addEventListener('change', e => { loadFiles(e.target.files); e.target.value = ''; });
 $('prev').addEventListener('click', () => stepTrack(-1));
 $('next').addEventListener('click', () => stepTrack(1));
 $('play').addEventListener('click', togglePlay);
 $('demo').addEventListener('click', toggleDemo);
-$('demo2').addEventListener('click', toggleDemo);
+$('rec').addEventListener('click', toggleRec);
 
 $('vol').addEventListener('input', e => {
   const v = parseFloat(e.target.value);
@@ -1487,6 +1632,44 @@ function draw(t) {
 }
 
 /* ============================================================
+   Remember settings
+   ============================================================ */
+const PREF_KEY = 'sonic-room-prefs-v1';
+
+function savePrefs() {
+  try {
+    localStorage.setItem(PREF_KEY, JSON.stringify({
+      vol: $('vol').value, hrtf: state.hrtf, air: state.air, room: state.room,
+      roll: state.rolloff, motion: state.motion, motionSpeed: state.motionSpeed,
+      loopMode: state.loopMode, gyroGain: state.gyroGain
+    }));
+  } catch (e) {}
+}
+
+function loadPrefs() {
+  let p = null;
+  try { p = JSON.parse(localStorage.getItem(PREF_KEY) || 'null'); } catch (e) { p = null; }
+  if (!p) return;
+  if (typeof p.vol === 'string') { $('vol').value = p.vol; $('volOut').textContent = Math.round(parseFloat(p.vol) * 100) + '%'; }
+  if (typeof p.hrtf === 'boolean') { state.hrtf = p.hrtf; $('hrtf').checked = p.hrtf; }
+  if (typeof p.air === 'boolean') { state.air = p.air; $('air').checked = p.air; }
+  if (typeof p.room === 'number') { state.room = p.room; $('room').value = p.room; $('roomOut').textContent = Math.round(p.room * 100) + '%'; }
+  if (typeof p.roll === 'number') { state.rolloff = p.roll; $('roll').value = p.roll; $('rollOut').textContent = p.roll.toFixed(1); }
+  if (typeof p.motion === 'string' && MOTION_LABELS[p.motion]) {
+    state.motion = p.motion; $('motion').value = p.motion; $('motOut').textContent = MOTION_LABELS[p.motion];
+  }
+  if (typeof p.motionSpeed === 'number') { state.motionSpeed = p.motionSpeed; $('motSpeed').value = p.motionSpeed; $('motSpdOut').textContent = Math.round(p.motionSpeed); }
+  if (typeof p.loopMode === 'string') {
+    state.loopMode = p.loopMode; $('loopMode').value = p.loopMode;
+    $('loopOut').textContent = state.loopMode === 'all' ? 'Next' : state.loopMode === 'one' ? 'Repeat' : 'Stop';
+  }
+  if (typeof p.gyroGain === 'number') { state.gyroGain = p.gyroGain; $('gyroGain').value = p.gyroGain; $('gyroOut').textContent = p.gyroGain.toFixed(1) + '×'; }
+}
+
+$('panel').addEventListener('change', savePrefs);
+$('panel').addEventListener('input', savePrefs);
+
+/* ============================================================
    Install as an app (PWA)
    ============================================================ */
 let deferredPrompt = null;
@@ -1494,20 +1677,8 @@ const isStandalone = () => window.matchMedia('(display-mode: standalone)').match
 const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 function refreshInstallUI() {
-  if (isStandalone()) {
-    $('installRow').style.display = 'none';
-    $('installHint').textContent = 'Running as an installed app. Nice.';
-    return;
-  }
-  if (deferredPrompt) {
-    $('installRow').style.display = 'flex';
-    $('installHint').textContent = 'One tap and Sonic Room gets its own icon — full-screen, no browser bars, works offline.';
-    return;
-  }
-  $('installRow').style.display = 'none';
-  $('installHint').textContent = isIOS()
-    ? 'To install: tap the Share button in Safari, then “Add to Home Screen”.'
-    : 'Open this page in Chrome, then use the menu → “Install app” / “Add to Home screen”.';
+  const show = !isStandalone() && (deferredPrompt || isIOS());
+  $('installGrp').style.display = show ? 'block' : 'none';
 }
 
 window.addEventListener('beforeinstallprompt', e => {
@@ -1526,8 +1697,7 @@ $('installBtn').addEventListener('click', async () => {
 
 window.addEventListener('appinstalled', () => {
   deferredPrompt = null;
-  $('installHint').textContent = 'Installed. Look for Sonic Room on your home screen.';
-  $('installRow').style.display = 'none';
+  refreshInstallUI();
 });
 
 refreshInstallUI();
@@ -1541,6 +1711,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 /* ============================================================
    Boot
    ============================================================ */
+loadPrefs();
 resize();
 renderSpkChips();
 buildCam();

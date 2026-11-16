@@ -125,6 +125,16 @@
   input[type=range].teal::-webkit-slider-thumb{background:var(--teal)}
   input[type=range].teal::-moz-range-thumb{background:var(--teal)}
 
+.sel{
+    grid-column:1/-1;width:100%;appearance:none;-webkit-appearance:none;
+    font-family:var(--font-display);font-size:12.5px;color:var(--text);
+    background-color:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:8px;
+    padding:9px 30px 9px 10px;min-height:38px;cursor:pointer;margin-top:2px;
+    background-image:linear-gradient(45deg,transparent 50%,#8b9cb3 50%),linear-gradient(135deg,#8b9cb3 50%,transparent 50%);
+    background-position:calc(100% - 15px) 16px,calc(100% - 10px) 16px;
+    background-size:5px 5px,5px 5px;background-repeat:no-repeat;
+  }
+  .sel option{background:#0d1520;color:#e8eef6}
   .chk{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--dim);margin-bottom:10px;cursor:pointer;user-select:none;min-height:28px}
   .chk input{appearance:none;-webkit-appearance:none;width:17px;height:17px;border-radius:4px;border:1px solid var(--border-2);background:rgba(255,255,255,.04);flex:none;cursor:pointer;position:relative;transition:background .15s,border-color .15s}
   .chk input:checked{background:var(--teal);border-color:var(--teal)}
@@ -223,18 +233,29 @@
 
     <section class="grp">
       <h2 class="grp__h"><span class="dot dot--amber"></span>Source</h2>
-      <input type="file" id="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac,.aac" hidden>
-      <button class="btn btn--primary" id="pick" style="width:100%">Choose an MP3</button>
-      <div class="track" id="trackName" style="margin-top:9px">No track loaded — drop a file anywhere</div>
+      <input type="file" id="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.opus" multiple hidden>
+      <button class="btn btn--primary" id="pick" style="width:100%">Choose songs from device</button>
+      <div class="track" id="trackName" style="margin-top:9px">No track loaded — pick one file or your whole playlist</div>
       <div class="row">
+        <button class="btn" id="prev" aria-label="Previous track">Prev</button>
         <button class="btn" id="play">Play</button>
-        <button class="btn" id="demo">Demo sound</button>
+        <button class="btn" id="next" aria-label="Next track">Next</button>
+      </div>
+      <div class="row">
+        <button class="btn" id="demo" style="flex:1">Demo sound</button>
       </div>
       <label class="ctl">
         <span>Volume</span><output id="volOut">85%</output>
         <input type="range" id="vol" min="0" max="1" step="0.01" value="0.85">
       </label>
-      <label class="chk"><input type="checkbox" id="loop" checked><span>Loop the track</span></label>
+      <label class="ctl">
+        <span>When a song ends</span><output id="loopOut">Next</output>
+        <select id="loopMode" class="sel">
+          <option value="all" selected>Play the next one</option>
+          <option value="one">Repeat the same song</option>
+          <option value="off">Stop at the end</option>
+        </select>
+      </label>
     </section>
 
     <section class="grp">
@@ -287,12 +308,27 @@
     </section>
 
     <section class="grp">
-      <h2 class="grp__h"><span class="dot dot--slate"></span>Motion &amp; head</h2>
-      <label class="chk"><input type="checkbox" id="orbit"><span>Let the selected speaker circle you</span></label>
+      <h2 class="grp__h"><span class="dot dot--slate"></span>Auto motion</h2>
       <label class="ctl">
-        <span>Orbit speed</span><output id="orbOut">30°/s</output>
-        <input type="range" id="orb" class="teal" min="5" max="120" step="1" value="30">
+        <span>Movement</span><output id="motOut">Off</output>
+        <select id="motion" class="sel">
+          <option value="none" selected>Off — move it yourself</option>
+          <option value="orbit">Circle around you</option>
+          <option value="pendulum">Pendulum, left to right</option>
+          <option value="fig8">Figure eight</option>
+          <option value="inout">In and out</option>
+          <option value="flyby">Fly-by pass</option>
+          <option value="spiral">Spiral</option>
+          <option value="drift">Random drift</option>
+          <option value="bob">Up and down</option>
+        </select>
       </label>
+      <label class="ctl">
+        <span>Speed</span><output id="motSpdOut">30</output>
+        <input type="range" id="motSpeed" class="teal" min="5" max="120" step="1" value="30">
+      </label>
+      <label class="chk"><input type="checkbox" id="motAll"><span>Move every speaker at once</span></label>
+      <h2 class="grp__h" style="margin-top:14px"><span class="dot dot--teal"></span>Head</h2>
       <label class="chk"><input type="checkbox" id="gyro"><span>Head tracking <span style="color:var(--dimmer)">(tilt your phone)</span></span></label>
       <label class="ctl" id="gyroGainRow">
         <span>Tilt sensitivity</span><output id="gyroOut">1.0×</output>
@@ -336,7 +372,7 @@
   <h2>Step into the room</h2>
   <p>Load a song, then move the coloured speakers around yourself. Turn your head by dragging the background — the sound stays put in space.</p>
   <div class="row">
-    <button class="btn btn--primary" id="pick2">Choose MP3</button>
+    <button class="btn btn--primary" id="pick2">Choose songs</button>
     <button class="btn" id="demo2">Demo sound</button>
   </div>
   <div class="start__note">Headphones strongly recommended.</div>
@@ -360,7 +396,8 @@ const NAMES = ['A', 'B', 'C'];
 const state = {
   yaw: 0, pitch: 0.40, camDist: 11,
   hrtf: true, air: true, room: 0.25, rolloff: 1.4,
-  orbit: false, orbitSpeed: 30,
+  motion: 'none', motionSpeed: 30, motionAll: false,
+  loopMode: 'all',
   selected: 0,
   gyro: false, gyroGain: 1,
   playing: false, level: 0, smoothLevel: 0,
@@ -721,22 +758,80 @@ function togglePlay() {
   }
 }
 
-function loadFile(file) {
-  if (!file) return;
+/* ---------- playlist: any number of files from the device ---------- */
+const playlist = [];
+let plIndex = -1;
+let objectUrls = [];
+
+const AUDIO_RE = /\.(mp3|wav|ogg|oga|m4a|aac|flac|opus|weba|webm|aiff?|caf)$/i;
+
+function isAudio(f) { return (f.type && f.type.startsWith('audio/')) || AUDIO_RE.test(f.name); }
+
+function loadFiles(fileList) {
+  const files = Array.from(fileList || []).filter(isAudio);
+  if (!files.length) {
+    $('trackName').textContent = 'That file is not audio — try MP3, WAV, M4A, OGG or FLAC';
+    return;
+  }
   ensureAudio();
   if (demoNode) toggleDemo();
-  el.src = URL.createObjectURL(file);
-  el.loop = $('loop').checked;
-  $('trackName').textContent = file.name.replace(/\.[^.]+$/, '');
-  $('trackName').classList.add('track--live');
-  el.load();
-  el.play().then(() => {
-    state.playing = true;
-    $('play').textContent = 'Pause';
-    hideStart();
-    requestWakeLock();
-  }).catch(() => {});
+
+  playlist.length = 0;
+  plIndex = -1;
+  files.forEach(f => {
+    const url = URL.createObjectURL(f);
+    objectUrls.push(url);
+    playlist.push({ name: f.name.replace(/\.[^.]+$/, ''), url });
+  });
+
+  playIndex(0);
 }
+
+function trackLabel() {
+  if (!playlist.length) return;
+  const t = playlist[plIndex];
+  const pos = playlist.length > 1 ? `  ·  ${plIndex + 1}/${playlist.length}` : '';
+  $('trackName').textContent = t.name + pos;
+  $('trackName').classList.add('track--live');
+}
+
+function playIndex(i, autoplay = true) {
+  if (!playlist.length) return;
+  plIndex = ((i % playlist.length) + playlist.length) % playlist.length;
+  el.src = playlist[plIndex].url;
+  el.loop = false;                 // end-of-track is handled below
+  el.load();
+  trackLabel();
+  if (autoplay) {
+    el.play().then(() => {
+      state.playing = true;
+      $('play').textContent = 'Pause';
+      hideStart();
+      requestWakeLock();
+    }).catch(() => {});
+  }
+}
+
+function stepTrack(dir) {
+  if (!playlist.length) { $('file').click(); return; }
+  playIndex(plIndex + dir);
+}
+
+/* auto-advance when a song ends */
+el.addEventListener('ended', () => {
+  if (state.loopMode === 'one') { el.currentTime = 0; el.play().catch(() => {}); return; }
+  if (playlist.length > 1) {
+    const last = plIndex === playlist.length - 1;
+    if (last && state.loopMode === 'off') { state.playing = false; $('play').textContent = 'Play'; return; }
+    playIndex(plIndex + 1);
+    return;
+  }
+  if (state.loopMode === 'off') { state.playing = false; $('play').textContent = 'Play'; return; }
+  el.currentTime = 0; el.play().catch(() => {});
+});
+
+el.addEventListener('play', () => { state.playing = true; $('play').textContent = 'Pause'; });
+el.addEventListener('pause', () => { state.playing = false; $('play').textContent = 'Play'; });
 
 function hideStart() { $('start').classList.add('hide'); }
 $('start').addEventListener('pointerdown', e => { if (!e.target.closest('button')) hideStart(); });
@@ -762,7 +857,7 @@ const deg = r => r * 180 / Math.PI;
 const wrap360 = d => ((d % 360) + 360) % 360;
 
 let activeSlider = null;
-['dist', 'az', 'height', 'vol', 'room', 'roll', 'orb', 'gyroGain'].forEach(id => {
+['dist', 'az', 'height', 'vol', 'room', 'roll', 'motSpeed', 'gyroGain'].forEach(id => {
   const elx = $(id);
   elx.addEventListener('pointerdown', () => { activeSlider = id; });
   elx.addEventListener('pointerup', () => { activeSlider = null; });
@@ -845,7 +940,9 @@ $('delSpk').addEventListener('click', removeSpeaker);
 
 $('pick').addEventListener('click', () => $('file').click());
 $('pick2').addEventListener('click', () => $('file').click());
-$('file').addEventListener('change', e => loadFile(e.target.files[0]));
+$('file').addEventListener('change', e => { loadFiles(e.target.files); e.target.value = ''; });
+$('prev').addEventListener('click', () => stepTrack(-1));
+$('next').addEventListener('click', () => stepTrack(1));
 $('play').addEventListener('click', togglePlay);
 $('demo').addEventListener('click', toggleDemo);
 $('demo2').addEventListener('click', toggleDemo);
@@ -855,22 +952,28 @@ $('vol').addEventListener('input', e => {
   $('volOut').textContent = Math.round(v * 100) + '%';
   if (master) master.gain.value = v;
 });
-$('loop').addEventListener('change', e => { el.loop = e.target.checked; });
+$('loopMode').addEventListener('change', e => {
+  state.loopMode = e.target.value;
+  $('loopOut').textContent = state.loopMode === 'all' ? 'Next' : state.loopMode === 'one' ? 'Repeat' : 'Stop';
+});
 
 $('dist').addEventListener('input', e => {
   const s = sel(), { az } = polar(s);
   const d = parseFloat(e.target.value);
   s.x = d * Math.sin(az); s.z = -d * Math.cos(az);
+  recaptureAllMotion();
   updateHUD();
 });
 $('az').addEventListener('input', e => {
   const s = sel(), { dist } = polar(s);
   const a = parseFloat(e.target.value) * Math.PI / 180;
   s.x = dist * Math.sin(a); s.z = -dist * Math.cos(a);
+  recaptureAllMotion();
   updateHUD();
 });
 $('height').addEventListener('input', e => {
   sel().h = parseFloat(e.target.value);
+  recaptureAllMotion();
   updateHUD();
 });
 
@@ -890,11 +993,16 @@ $('roll').addEventListener('input', e => {
   speakers.forEach(s => { if (s.nodes) s.nodes.panner.rolloffFactor = state.rolloff; });
   updateHUD();
 });
-$('orbit').addEventListener('change', e => { state.orbit = e.target.checked; });
-$('orb').addEventListener('input', e => {
-  state.orbitSpeed = parseFloat(e.target.value);
-  $('orbOut').textContent = Math.round(state.orbitSpeed) + '°/s';
+$('motion').addEventListener('change', e => {
+  state.motion = e.target.value;
+  $('motOut').textContent = MOTION_LABELS[state.motion];
+  recaptureAllMotion();
 });
+$('motSpeed').addEventListener('input', e => {
+  state.motionSpeed = parseFloat(e.target.value);
+  $('motSpdOut').textContent = Math.round(state.motionSpeed);
+});
+$('motAll').addEventListener('change', e => { state.motionAll = e.target.checked; recaptureAllMotion(); });
 $('gyro').addEventListener('change', e => enableGyro(e.target.checked));
 $('gyroGain').addEventListener('input', e => {
   state.gyroGain = parseFloat(e.target.value);
@@ -938,6 +1046,7 @@ document.querySelectorAll('.chip[data-preset]').forEach(btn => {
     }
     if (p === 'reset') {
       state.yaw = 0; state.pitch = 0.40; state.camDist = 11;
+      state.motion = 'none'; $('motion').value = 'none'; $('motOut').textContent = 'Off';
       state.room = 0.25; $('room').value = 0.25; $('roomOut').textContent = '25%';
       state.rolloff = 1.4; $('roll').value = 1.4; $('rollOut').textContent = '1.4';
       applyMix(); scheduleIR();
@@ -947,6 +1056,7 @@ document.querySelectorAll('.chip[data-preset]').forEach(btn => {
       speakers[0].z = -3 * Math.cos(34 * Math.PI / 180);
       renderSpkChips();
     }
+    recaptureAllMotion();
     updateHUD(true);
   });
 });
@@ -977,7 +1087,7 @@ window.addEventListener('keydown', e => {
     case ' ': togglePlay(); break;
     default: used = false;
   }
-  if (used) { e.preventDefault(); updateHUD(); }
+  if (used) { e.preventDefault(); recaptureAllMotion(); updateHUD(); }
 });
 
 /* ============================================================
@@ -1055,6 +1165,7 @@ function endDrag(e) {
   }
   drag = null;
   cv.classList.remove('grabbing');
+  recaptureAllMotion();
 }
 cv.addEventListener('pointerup', endDrag);
 cv.addEventListener('pointercancel', () => { drag = null; cv.classList.remove('grabbing'); });
@@ -1083,8 +1194,7 @@ cv.addEventListener('touchend', () => { pinch = null; }, { passive: true });
 window.addEventListener('dragover', e => e.preventDefault());
 window.addEventListener('drop', e => {
   e.preventDefault();
-  const f = e.dataTransfer.files && e.dataTransfer.files[0];
-  if (f) loadFile(f);
+  if (e.dataTransfer.files && e.dataTransfer.files.length) loadFiles(e.dataTransfer.files);
 });
 
 /* ============================================================
@@ -1182,16 +1292,70 @@ function drawOrb(s, isSel, t) {
   g.fillText(NAMES[s.id], sp.x, sp.y + 0.5);
 }
 
+const MOTION_LABELS = {
+  none: 'Off', orbit: 'Circle', pendulum: 'Pendulum', fig8: 'Figure eight',
+  inout: 'In & out', flyby: 'Fly-by', spiral: 'Spiral', drift: 'Drift', bob: 'Up & down'
+};
+let motionT = 0;
+
+function recaptureMotion(s) {
+  const { dist, az } = polar(s);
+  s.mbase = { dist, az, h: s.h };
+}
+function recaptureAllMotion() {
+  speakers.forEach(recaptureMotion);
+  motionT = 0;
+}
+
+/* where a motion preset wants the speaker to be, given its base position */
+function motionAt(kind, t, b, phase) {
+  const p = t + phase * 0.9;
+  let dist = b.dist, az = b.az, h = b.h;
+  switch (kind) {
+    case 'orbit':
+      az = b.az + p; break;
+    case 'pendulum':
+      az = b.az + Math.sin(p) * 0.95; break;
+    case 'fig8':
+      az = b.az + Math.sin(p) * 0.8;
+      dist = b.dist + Math.sin(2 * p) * 1.1; break;
+    case 'inout':
+      dist = b.dist * (0.3 + 0.95 * (0.5 + 0.5 * Math.sin(p))); break;
+    case 'flyby':
+      az = b.az + Math.sin(p) * 1.35;
+      dist = b.dist * (0.4 + 0.6 * Math.abs(Math.cos(p))); break;
+    case 'spiral':
+      az = b.az + p * 1.4;
+      dist = b.dist + Math.sin(p * 0.6) * 2.2; break;
+    case 'drift':
+      az = b.az + Math.sin(p * 0.7) * 1.2 + Math.sin(p * 1.9) * 0.35;
+      dist = b.dist + Math.sin(p * 1.3) * 1.7;
+      h = b.h + Math.sin(p * 0.9) * 0.9; break;
+    case 'bob':
+      h = b.h + Math.sin(p) * 1.3; break;
+  }
+  return { dist, az, h };
+}
+
+function applyMotion(dt) {
+  if (state.motion === 'none') return;
+  motionT += dt * (state.motionSpeed / 30);
+  const targets = state.motionAll ? speakers : [sel()];
+  targets.forEach(s => {
+    if (!s.mbase) recaptureMotion(s);
+    const o = motionAt(state.motion, motionT, s.mbase, s.id);
+    const d = clamp(o.dist, 0.4, 14);
+    s.x = d * Math.sin(o.az);
+    s.z = -d * Math.cos(o.az);
+    s.h = clamp(o.h, -2, 4);
+  });
+}
+
 function draw(t) {
   const dt = Math.min(0.05, (t - lastT) / 1000);
   lastT = t;
 
-  if (state.orbit) {
-    const s = sel();
-    const { dist, az } = polar(s);
-    const a = az + (state.orbitSpeed * Math.PI / 180) * dt;
-    s.x = dist * Math.sin(a); s.z = -dist * Math.cos(a);
-  }
+  applyMotion(dt);
 
   g.clearRect(0, 0, W, H);
   buildCam();

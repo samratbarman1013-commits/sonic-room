@@ -7,6 +7,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="description" content="A binaural 3D room: place up to three speakers anywhere around your head and hear where they are.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<meta name="apple-mobile-web-app-title" content="Sonic Room">
+<meta name="mobile-web-app-capable" content="yes">
 <title>Sonic Room — 3D sound you can walk around</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -173,6 +178,10 @@
   .start .row .btn{padding:11px}
   .start__note{margin-top:13px;font-family:var(--font-mono);font-size:10.5px;letter-spacing:.04em;color:var(--dimmer)}
 
+  @media (display-mode: standalone){
+    .brand{top:calc(18px + env(safe-area-inset-top))}
+    .panel{max-height:60vh}
+  }
   @media (max-width:900px){
     .panel{
       top:auto;bottom:0;height:auto;max-height:58vh;width:100%;
@@ -293,6 +302,14 @@
         <button class="chip" id="recal">Recalibrate tilt</button>
         <button class="chip" id="fs">Fullscreen</button>
       </div>
+    </section>
+
+    <section class="grp">
+      <h2 class="grp__h"><span class="dot dot--teal"></span>Install</h2>
+      <div class="row" id="installRow" style="display:none">
+        <button class="btn btn--primary" id="installBtn" style="width:100%">Install on this device</button>
+      </div>
+      <p class="hint" id="installHint">Add it to your home screen and it opens full-screen, works offline, and keeps your settings.</p>
     </section>
 
     <section class="grp">
@@ -1303,6 +1320,58 @@ function draw(t) {
 
   syncAudioPositions();
   requestAnimationFrame(draw);
+}
+
+/* ============================================================
+   Install as an app (PWA)
+   ============================================================ */
+let deferredPrompt = null;
+const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+function refreshInstallUI() {
+  if (isStandalone()) {
+    $('installRow').style.display = 'none';
+    $('installHint').textContent = 'Running as an installed app. Nice.';
+    return;
+  }
+  if (deferredPrompt) {
+    $('installRow').style.display = 'flex';
+    $('installHint').textContent = 'One tap and Sonic Room gets its own icon — full-screen, no browser bars, works offline.';
+    return;
+  }
+  $('installRow').style.display = 'none';
+  $('installHint').textContent = isIOS()
+    ? 'To install: tap the Share button in Safari, then “Add to Home Screen”.'
+    : 'Open this page in Chrome, then use the menu → “Install app” / “Add to Home screen”.';
+}
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  refreshInstallUI();
+});
+
+$('installBtn').addEventListener('click', async () => {
+  if (!deferredPrompt) { refreshInstallUI(); return; }
+  deferredPrompt.prompt();
+  try { await deferredPrompt.userChoice; } catch (e) {}
+  deferredPrompt = null;
+  refreshInstallUI();
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredPrompt = null;
+  $('installHint').textContent = 'Installed. Look for Sonic Room on your home screen.';
+  $('installRow').style.display = 'none';
+});
+
+refreshInstallUI();
+
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
 }
 
 /* ============================================================

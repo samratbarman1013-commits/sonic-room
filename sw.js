@@ -1,5 +1,5 @@
 /* Sonic Room service worker — offline shell */
-const CACHE = 'sonic-room-v5';
+const CACHE = 'sonic-room-v6';
 const ASSETS = [
   './',
   './index.html',
